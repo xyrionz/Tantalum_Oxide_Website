@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Monitor, BarChart3, Eye, Waves, Calculator } from 'lucide-react';
-import RetroGraph from './RetroGraph';
+import ResultsCharts from './ResultsCharts';
 import InstrumentPanel from './InstrumentPanel';
 
 const ResultsPage: React.FC = () => {
@@ -95,12 +95,8 @@ const ResultsPage: React.FC = () => {
         </h2>
       </div>
 
-      {/* Instrument Panels Grid */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {instruments.map((instrument) => (
-          <InstrumentPanel key={instrument.id} instrument={instrument} />
-        ))}
-      </div>
+      {/* Results Charts */}
+      <ResultsCharts />
 
       {/* Analysis Summary */}
       <div className="bg-slate-900/80 border border-green-500/30 rounded-lg p-6">
