@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import LeakageCurrentVsVoltageChart from './LeakageCurrentVsVoltageChart';
 import ThicknessVsLeakageCurrentChart from './ThicknessVsLeakageCurrentChart';
 import AnnealingTemperatureVsSurfaceRoughnessChart from './AnnealingTemperatureVsSurfaceRoughnessChart';
@@ -6,42 +7,34 @@ import EthanolQuantityVsParticleUniformityChart from './EthanolQuantityVsParticl
 import AnnealingTemperatureVsCrystallinityIndexChart from './AnnealingTemperatureVsCrystallinityIndexChart';
 import GrainSizeVsLeakageCurrentChart from './GrainSizeVsLeakageCurrentChart';
 
+async function generateGraphDataWithGemini(params) {
+  const prompt = `Dont explain, just respond with valid JSON for the following chart data.\nGiven these experiment parameters:\n- Annealing Temperature: ${params.temperature} °C\n- Film Thickness: ${params.thickness} nm\n- Stirring Duration: ${params.stirringDuration} min\n- Ethanol Amount: ${params.ethanolAmount} mL\n- Coating Substance Amount: ${params.coatingAmount} mg\n\nPredict the data for the following graphs as JSON:\n{\n  "leakageCurrentVsVoltage": { "labels": [...], "data": [...] },\n  "thicknessVsLeakageCurrent": { "points": [{ "x": ..., "y": ... }, ...] },\n  "annealingTemperatureVsSurfaceRoughness": { "labels": [...], "data": [...] },\n  "ethanolQuantityVsParticleUniformity": { "labels": [...], "data": [...] },\n  "annealingTemperatureVsCrystallinityIndex": { "labels": [...], "data": [...] },\n  "grainSizeVsLeakageCurrent": { "points": [{ "x": ..., "y": ... }, ...] }\n}`;
 
-// Dummy AI logic function
-function generateGraphData(params: any) {
-  // Replace this with real AI/model logic
-  // For now, just return some dummy data based on input
-  return {
-    leakageCurrentVsVoltage: {
-      labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      data: params.thickness ? Array(11).fill(params.thickness / 100) : [0,0.2,0.5,1,1.8,2.5,3.1,3.8,4.2,4.5,5],
+  const response = await axios.post(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      model: 'mistralai/mistral-small-3.2-24b-instruct:free',
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
     },
-    thicknessVsLeakageCurrent: {
-      points: [
-        { x: params.thickness || 100, y: params.temperature || 500 },
-        { x: (params.thickness || 100) + 20, y: (params.temperature || 500) + 10 },
-      ],
-    },
-    annealingTemperatureVsSurfaceRoughness: {
-      labels: [300, 400, 500, 600, 700, 800],
-      data: [5, 4.2, 3.8, 3.2, 2.7, 2.1],
-    },
-    ethanolQuantityVsParticleUniformity: {
-      labels: [1, 2, 3, 4, 5, 6],
-      data: [8, 6, 5, 4, 3, 2],
-    },
-    annealingTemperatureVsCrystallinityIndex: {
-      labels: [300, 400, 500, 600, 700, 800],
-      data: [0.2, 0.35, 0.5, 0.65, 0.8, 0.95],
-    },
-    grainSizeVsLeakageCurrent: {
-      points: [
-        { x: 10, y: 0.1 },
-        { x: 20, y: 0.3 },
-        { x: 30, y: 0.6 },
-      ],
-    },
-  };
+    {
+      headers: {
+        'Authorization': 'Bearer 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',
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  const text = response.data.choices[0].message.content;
+  const jsonMatch = text.match(/{[\s\S]*}/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]);
+  }
+  throw new Error('No valid JSON found in OpenRouter response');
 }
 
 const ResultsCharts: React.FC = () => {
@@ -52,20 +45,31 @@ const ResultsCharts: React.FC = () => {
     ethanolAmount: '',
     coatingAmount: '',
   });
-  const [graphData, setGraphData] = React.useState(generateGraphData({}));
+  const [graphData, setGraphData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setParams({ ...params, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGraphData(generateGraphData(params));
+    setLoading(true);
+    setError('');
+    try {
+      const data = await generateGraphDataWithGemini(params);
+      setGraphData(data);
+    } catch (err) {
+      setError('AI failed to generate graph data.');
+    }
+    setLoading(false);
   };
 
   return (
     <div className="space-y-8">
       <form className="bg-white p-6 rounded-lg shadow mb-6 grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={handleSubmit}>
+        {/* ...input fields as before... */}
         <div>
           <label className="block font-semibold mb-1">Annealing Temperature (°C)</label>
           <input type="number" name="temperature" value={params.temperature} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
@@ -87,16 +91,23 @@ const ResultsCharts: React.FC = () => {
           <input type="number" name="coatingAmount" value={params.coatingAmount} onChange={handleChange} className="border rounded px-2 py-1 w-full" />
         </div>
         <div className="flex items-end">
-          <button type="submit" className="bg-green-500 text-white px-4 py-2 rounded">Generate Graphs</button>
+          <button type="submit" className="bg-green-500 text-white px-4 py-2 rounded" disabled={loading}>
+            {loading ? 'Generating...' : 'Generate Graphs'}
+          </button>
         </div>
       </form>
+      {error && <div className="text-red-500 font-semibold mb-4">{error}</div>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-        <LeakageCurrentVsVoltageChart labels={graphData.leakageCurrentVsVoltage.labels} data={graphData.leakageCurrentVsVoltage.data} />
-        <ThicknessVsLeakageCurrentChart points={graphData.thicknessVsLeakageCurrent.points} />
-        <AnnealingTemperatureVsSurfaceRoughnessChart labels={graphData.annealingTemperatureVsSurfaceRoughness.labels} data={graphData.annealingTemperatureVsSurfaceRoughness.data} />
-        <EthanolQuantityVsParticleUniformityChart labels={graphData.ethanolQuantityVsParticleUniformity.labels} data={graphData.ethanolQuantityVsParticleUniformity.data} />
-        <AnnealingTemperatureVsCrystallinityIndexChart labels={graphData.annealingTemperatureVsCrystallinityIndex.labels} data={graphData.annealingTemperatureVsCrystallinityIndex.data} />
-        <GrainSizeVsLeakageCurrentChart points={graphData.grainSizeVsLeakageCurrent.points} />
+        {graphData && (
+          <>
+            <LeakageCurrentVsVoltageChart labels={graphData.leakageCurrentVsVoltage.labels} data={graphData.leakageCurrentVsVoltage.data} />
+            <ThicknessVsLeakageCurrentChart points={graphData.thicknessVsLeakageCurrent.points} />
+            <AnnealingTemperatureVsSurfaceRoughnessChart labels={graphData.annealingTemperatureVsSurfaceRoughness.labels} data={graphData.annealingTemperatureVsSurfaceRoughness.data} />
+            <EthanolQuantityVsParticleUniformityChart labels={graphData.ethanolQuantityVsParticleUniformity.labels} data={graphData.ethanolQuantityVsParticleUniformity.data} />
+            <AnnealingTemperatureVsCrystallinityIndexChart labels={graphData.annealingTemperatureVsCrystallinityIndex.labels} data={graphData.annealingTemperatureVsCrystallinityIndex.data} />
+            <GrainSizeVsLeakageCurrentChart points={graphData.grainSizeVsLeakageCurrent.points} />
+          </>
+        )}
       </div>
     </div>
   );

@@ -6,47 +6,30 @@ import EthanolQuantityVsParticleUniformityChart from './EthanolQuantityVsParticl
 import AnnealingTemperatureVsCrystallinityIndexChart from './AnnealingTemperatureVsCrystallinityIndexChart';
 import GrainSizeVsLeakageCurrentChart from './GrainSizeVsLeakageCurrentChart';
 
-// Placeholder function for AI logic
-function generateGraphData(params: any) {
-  // TODO: Replace with AI or real calculation logic
-  // For now, return dummy data based on input params
-  return {
-    leakageCurrentVsVoltage: {
-      labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-      data: [0, 0.2, 0.5, 1.0, 1.8, 2.5, 3.1, 3.8, 4.2, 4.5, 5.0],
-    },
-    thicknessVsLeakageCurrent: [
-      { x: 20, y: 0.5 },
-      { x: 40, y: 0.7 },
-      { x: 60, y: 1.2 },
-      { x: 80, y: 1.8 },
-      { x: 100, y: 2.1 },
-      { x: 120, y: 2.5 },
-      { x: 140, y: 3.0 },
-    ],
-    annealingTemperatureVsSurfaceRoughness: {
-      labels: [300, 400, 500, 600, 700, 800],
-      data: [5, 4.2, 3.8, 3.2, 2.7, 2.1],
-    },
-    ethanolQuantityVsParticleUniformity: {
-      labels: [1, 2, 3, 4, 5, 6],
-      data: [8, 6, 5, 4, 3, 2],
-    },
-    annealingTemperatureVsCrystallinityIndex: {
-      labels: [300, 400, 500, 600, 700, 800],
-      data: [0.2, 0.35, 0.5, 0.65, 0.8, 0.95],
-    },
-    grainSizeVsLeakageCurrent: [
-      { x: 10, y: 0.1 },
-      { x: 20, y: 0.3 },
-      { x: 30, y: 0.6 },
-      { x: 40, y: 1.0 },
-      { x: 50, y: 1.5 },
-      { x: 60, y: 2.0 },
-      { x: 70, y: 2.7 },
-    ],
-  };
+import axios from 'axios';
+
+async function generateGraphData(params: any) {
+  const prompt = `Respond ONLY with valid JSON for the following chart data, no explanation or extra text.\nGiven these experiment parameters:\n- Annealing Temperature: ${params.temperature} °C\n- Film Thickness: ${params.thickness} nm\n- Stirring Duration: ${params.stirringDuration} min\n- Ethanol Amount: ${params.ethanolAmount} mL\n- Coating Substance Amount: ${params.coatingAmount} mg\n\nPredict the data for the following graphs as JSON:\n{\n  "leakageCurrentVsVoltage": { "labels": [...], "data": [...] },\n  "thicknessVsLeakageCurrent": { "points": [{ "x": ..., "y": ... }, ...] },\n  "annealingTemperatureVsSurfaceRoughness": { "labels": [...], "data": [...] },\n  "ethanolQuantityVsParticleUniformity": { "labels": [...], "data": [...] },\n  "annealingTemperatureVsCrystallinityIndex": { "labels": [...], "data": [...] },\n  "grainSizeVsLeakageCurrent": { "points": [{ "x": ..., "y": ... }, ...] }\n}`;
+
+  const response = await axios.post(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyCoqwrMd54QYXHOuQqd5FcYTYovvksSjeg',
+    {
+      contents: [{ parts: [{ text: prompt }] }]
+    }
+  );
+
+  const text = response.data.candidates[0].content.parts[0].text;
+  const jsonMatch = text.match(/{[\s\S]*}/);
+  if (jsonMatch) {
+    try {
+      return { parsed: JSON.parse(jsonMatch[0]), raw: text };
+    } catch (e) {
+      return { parsed: null, raw: text };
+    }
+  }
+  return { parsed: null, raw: text };
 }
+
 
 const ResultsChartsAI: React.FC = () => {
   const [params, setParams] = useState({
@@ -56,15 +39,34 @@ const ResultsChartsAI: React.FC = () => {
     ethanolAmount: '',
     coatingAmount: '',
   });
-  const [graphData, setGraphData] = useState(generateGraphData(params));
+  const [graphData, setGraphData] = useState<any>(null);
+  const [rawResponse, setRawResponse] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setParams({ ...params, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setGraphData(generateGraphData(params));
+    setLoading(true);
+    setError('');
+    setRawResponse('');
+    try {
+      const result = await generateGraphData(params);
+      setRawResponse(result.raw);
+      if (result.parsed) {
+        setGraphData(result.parsed);
+      } else {
+        setGraphData(null);
+        setError('AI failed to generate valid JSON. See raw response below.');
+      }
+    } catch (err) {
+      setError('AI request failed.');
+      setGraphData(null);
+    }
+    setLoading(false);
   };
 
   return (
@@ -75,16 +77,26 @@ const ResultsChartsAI: React.FC = () => {
         <input name="stirringDuration" type="number" step="any" placeholder="Stirring Duration (min)" value={params.stirringDuration} onChange={handleChange} className="border rounded px-2 py-1" />
         <input name="ethanolAmount" type="number" step="any" placeholder="Ethanol Amount (mL)" value={params.ethanolAmount} onChange={handleChange} className="border rounded px-2 py-1" />
         <input name="coatingAmount" type="number" step="any" placeholder="Coating Substance Amount (mg)" value={params.coatingAmount} onChange={handleChange} className="border rounded px-2 py-1" />
-        <button type="submit" className="bg-green-500 text-white px-3 py-1 rounded col-span-1 md:col-span-2">Generate Graphs</button>
+        <button type="submit" className="bg-green-500 text-white px-3 py-1 rounded col-span-1 md:col-span-2" disabled={loading}>{loading ? 'Generating...' : 'Generate Graphs'}</button>
       </form>
+      {error && <div className="text-red-500 font-semibold mb-4">{error}</div>}
+      {rawResponse && (
+        <div className="bg-gray-100 p-4 rounded mb-4">
+          <div className="font-bold mb-2">Raw Gemini Response:</div>
+          <pre className="text-xs whitespace-pre-wrap">{rawResponse}</pre>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-        {/* Pass graphData to each chart as props, update chart components to accept props if needed */}
-        <LeakageCurrentVsVoltageChart data={graphData.leakageCurrentVsVoltage} />
-        <ThicknessVsLeakageCurrentChart data={graphData.thicknessVsLeakageCurrent} />
-        <AnnealingTemperatureVsSurfaceRoughnessChart data={graphData.annealingTemperatureVsSurfaceRoughness} />
-        <EthanolQuantityVsParticleUniformityChart data={graphData.ethanolQuantityVsParticleUniformity} />
-        <AnnealingTemperatureVsCrystallinityIndexChart data={graphData.annealingTemperatureVsCrystallinityIndex} />
-        <GrainSizeVsLeakageCurrentChart data={graphData.grainSizeVsLeakageCurrent} />
+        {graphData && (
+          <>
+            <LeakageCurrentVsVoltageChart labels={graphData.leakageCurrentVsVoltage.labels} data={graphData.leakageCurrentVsVoltage.data} />
+            <ThicknessVsLeakageCurrentChart points={graphData.thicknessVsLeakageCurrent.points} />
+            <AnnealingTemperatureVsSurfaceRoughnessChart labels={graphData.annealingTemperatureVsSurfaceRoughness.labels} data={graphData.annealingTemperatureVsSurfaceRoughness.data} />
+            <EthanolQuantityVsParticleUniformityChart labels={graphData.ethanolQuantityVsParticleUniformity.labels} data={graphData.ethanolQuantityVsParticleUniformity.data} />
+            <AnnealingTemperatureVsCrystallinityIndexChart labels={graphData.annealingTemperatureVsCrystallinityIndex.labels} data={graphData.annealingTemperatureVsCrystallinityIndex.data} />
+            <GrainSizeVsLeakageCurrentChart points={graphData.grainSizeVsLeakageCurrent.points} />
+          </>
+        )}
       </div>
     </div>
   );
